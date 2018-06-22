@@ -3,13 +3,12 @@ import sys
 import numpy as np
 import tensorflow as tf
 import random
+import math
 import re
 import warnings
 import pandas as pd
 import cv2
 import matplotlib.pyplot as plt
-import matplotlib.cm as cm
-import matplotlib.ticker as ticker
 
 from tqdm import tqdm
 from itertools import chain
@@ -376,19 +375,53 @@ def get_result():
         # accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
 
         with tf.Session() as sess:
-            for test_image_id, _ in enumerate(test_ids):
-                ckpt = tf.train.get_checkpoint_state(MODEL_SAVE_PATH)
-                if ckpt and ckpt.model_checkpoint_path:
-                    saver.restore(sess, ckpt.model_checkpoint_path)
-                    global_step = ckpt.model_checkpoint_path.split('/')[-1].split('-')[-1]
-                    result = sess.run([y], {x: np.reshape(test_images[test_image_id], [1, IMG_WIDTH, IMG_HEIGHT, 3])})
-                    print("After %s training step(s), test accuracy = %g" % (global_step, result))
-                else:
-                    print('No checkpoint file found')
-                    return
+            # for test_image_id, _ in enumerate(test_ids):
+            test_image_id = 1
+            ckpt = tf.train.get_checkpoint_state(MODEL_SAVE_PATH)
+            if ckpt and ckpt.model_checkpoint_path:
+                saver.restore(sess, ckpt.model_checkpoint_path)
+                global_step = ckpt.model_checkpoint_path.split('/')[-1].split('-')[-1]
+                result = sess.run([y], {x: np.reshape(test_images[test_image_id], [1, IMG_WIDTH, IMG_HEIGHT, 3])})
+                boxes = result[0]
+                boxes = np.reshape(boxes, newshape=[GRID_DIM, GRID_DIM, MAX_BB_CNT, 5])
+                bbs = []
+
+                for i in range(GRID_DIM):
+                    for j in range(GRID_DIM):
+                        for b in range(MAX_BB_CNT):
+                            if (boxes[i][j][b][4] > 0.1):
+                                grid_center_x = ((j + 0) * GRID_PIX + GRID_PIX / 2)
+                                grid_center_y = ((i + 0) * GRID_PIX + GRID_PIX / 2)
+
+                                new_box_center_x = boxes[i][j][b][0] * IMG_WIDTH + grid_center_x
+                                new_box_center_y = boxes[i][j][b][1] * IMG_HEIGHT + grid_center_y
+
+                                new_w = np.square(boxes[i][j][b][2]) * IMG_WIDTH
+                                new_h = np.square(boxes[i][j][b][3]) * IMG_HEIGHT
+
+                                x1 = new_box_center_x - new_w / 2
+                                y1 = new_box_center_y - new_h / 2
+
+                                x2 = new_box_center_x + new_w / 2
+                                y2 = new_box_center_y + new_h / 2
+
+                                bbs.append((math.floor(x1), math.floor(y1), math.ceil(x2), math.ceil(y2)))
+                img = test_images[test_image_id]
+                print(img)
+                print(bbs)
+                cv2.imshow('img',img)
+                for i, b in enumerate(bbs):
+                    cv2.rectangle(img, (b[0], b[1]), (b[2], b[3]), (0, 255, 0), 2)
+
+                cv2.imshow('detect', img)
+                cv2.waitKey(0)
+            else:
+                print('No checkpoint file found')
+                return
 
 
 if __name__ == '__main__':
     # re_build_size()
     # backward()
+    re_build_size()
     get_result()
